@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WhereScore MVP</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>WhereScore</h1>
+      <nav>
+        <a href="?page=home">홈</a>
+        <a href="?page=compare">비교</a>
+        <a href="?page=about">소개/출처</a>
+        <a href="?page=help">도움말</a>
+      </nav>
+    </header>
+    <main id="app"></main>
+
+    <template id="home-template">
+      <section class="card">
+        <h2>공공데이터 기반 30초 입지 리포트</h2>
+        <p>주소 1개 입력으로 창업/프랜차이즈/부동산 결론을 빠르게 확인하세요.</p>
+        <form id="search-form" class="grid">
+          <label>주소/장소/역명
+            <input id="query" required placeholder="예: 강남역 11번 출구" />
+          </label>
+          <button type="submit">검색</button>
+          <button type="button" id="pick-map">지도에서 찍기</button>
+          <button type="button" id="use-location">내 주변</button>
+        </form>
+        <div id="autocomplete" class="list"></div>
+      </section>
+      <section id="picker-section" class="card hidden">
+        <h3>지도에서 위치 선택</h3>
+        <div id="picker-map" class="map"></div>
+        <button id="analyze-picked">선택 좌표 분석하기</button>
+      </section>
+    </template>
+
+    <template id="result-template">
+      <section class="card">
+        <div class="toolbar">
+          <div>
+            <label>모드
+              <select id="mode-select">
+                <option value="founder">창업</option>
+                <option value="franchise">프랜차이즈</option>
+                <option value="realestate">부동산</option>
+              </select>
+            </label>
+            <label>반경
+              <select id="radius-select">
+                <option value="500">500m</option>
+                <option value="1000">1km</option>
+              </select>
+            </label>
+          </div>
+          <div>
+            <button id="add-compare">비교에 담기</button>
+            <button id="download-pdf">PDF 저장</button>
+            <button id="share-link">공유 링크</button>
+          </div>
+        </div>
+        <div id="warning-badges" class="badges"></div>
+        <h2 id="headline"></h2>
+        <div id="top-cards" class="cards"></div>
+        <ol id="reasons"></ol>
+      </section>
+      <section class="card">
+        <h3>지도 레이어</h3>
+        <div class="layers">
+          <label><input type="checkbox" data-layer="competition" checked /> 경쟁</label>
+          <label><input type="checkbox" data-layer="transport" /> 교통</label>
+          <label><input type="checkbox" data-layer="demand" /> 수요</label>
+          <label><input type="checkbox" data-layer="risk" /> 리스크</label>
+        </div>
+        <div id="result-map" class="map"></div>
+      </section>
+      <section class="card">
+        <details open><summary>수요 상세</summary><div id="detail-demand"></div></details>
+        <details><summary>경쟁 상세</summary><div id="detail-competition"></div></details>
+        <details><summary>접근성 상세</summary><div id="detail-accessibility"></div></details>
+        <details><summary>리스크 상세</summary><div id="detail-risk"></div></details>
+        <details><summary>트렌드 상세</summary><div id="detail-trend"></div></details>
+      </section>
+    </template>
+
+    <template id="compare-template">
+      <section class="card">
+        <h2>후보지 비교 (최대 3개)</h2>
+        <div id="compare-cards" class="cards"></div>
+        <table id="compare-table"></table>
+        <p id="recommendation"></p>
+      </section>
+    </template>
+
+    <template id="about-template">
+      <section class="card">
+        <h2>서비스 소개 / 데이터 출처</h2>
+        <p>WhereScore는 공공 API 기반 상대평가 점수를 제공합니다.</p>
+        <ul>
+          <li>Nominatim(OpenStreetMap): 지오코딩/역지오코딩</li>
+          <li>Overpass API(OSM): 업종/교통/시설 POI</li>
+          <li>Open-Meteo Elevation: 고도 기반 간이 침수 취약도</li>
+        </ul>
+        <p>모든 결과는 생성일과 데이터 기준 시점을 표시하며, 결측 시 부분 결과를 제공합니다.</p>
+      </section>
+    </template>
+
+    <template id="help-template">
+      <section class="card">
+        <h2>지표 설명 & FAQ</h2>
+        <ul>
+          <li><b>수요:</b> 인구/주거/시설 밀도 대체지표 기반 잠재 수요</li>
+          <li><b>경쟁:</b> 동종업종 수 및 수요 대비 경쟁 강도</li>
+          <li><b>접근성:</b> 지하철/버스/주요 도로 주변 접근 가능성</li>
+          <li><b>리스크:</b> 침수 취약(고도), 공사/교란 요소 대체지표</li>
+          <li><b>트렌드:</b> 주변 개발/POI 변화 가능성의 근사치</li>
+        </ul>
+        <p>유동인구는 공공데이터 한계로 대체지표로 근사합니다.</p>
+      </section>
+    </template>
+
+    <template id="share-template">
+      <section class="card">
+        <h2>공유 요약</h2>
+        <div id="share-summary"></div>
+        <a id="open-report">원본 리포트 보기</a>
+      </section>
+    </template>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
