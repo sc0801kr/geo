@@ -1,5 +1,6 @@
 const app = document.getElementById('app');
 const cache = new Map(JSON.parse(localStorage.getItem('analysisCache') || '[]'));
+const FALLBACK_LOCATION = { lat: 37.5665, lon: 126.978, display_name: '서울특별시 시청 (기본 위치)' };
 
 const MODES = {
   founder: { name: '창업', weights: { demand: 40, competition: 35, accessibility: 15, risk: 5, trend: 5 } },
@@ -19,8 +20,9 @@ function clamp(v, min = 0, max = 100) { return Math.max(min, Math.min(max, v)); 
 function scoreFromDensity(v, scale) { return clamp(100 * (1 - Math.exp(-v / scale))); }
 
 async function geocode(query) {
-  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-  return res.json();
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=8&addressdetails=1&q=${encodeURIComponent(query)}`);
+  const data = await res.json();
+  return Array.isArray(data) && data.length ? data : [FALLBACK_LOCATION];
 }
 
 async function reverseGeocode(lat, lon) {
@@ -79,6 +81,10 @@ async function analyze({ lat, lon, radius, mode }) {
   const trend = clamp((demand * 0.4 + accessibility * 0.3 + (100 - competition) * 0.2 + risk * 0.1));
 
   const homogeneity = calcHomogeneity({ lat, lon, radius, points: demandPois });
+
+  if (!shops.length && !transport.length && !demandPois.length) {
+    warnings.push('외부 API 응답이 없어 기본 추정치로 분석했습니다.');
+  }
   const metrics = { demand, competition, accessibility, risk, trend, homogeneity };
 
   const modeDef = MODES[mode];
@@ -187,6 +193,27 @@ function renderHome() {
     });
   });
 
+  let inputTimer = null;
+  queryEl.addEventListener('input', () => {
+    clearTimeout(inputTimer);
+    const keyword = queryEl.value.trim();
+    if (keyword.length < 2) {
+      list.innerHTML = '';
+      return;
+    }
+    inputTimer = setTimeout(async () => {
+      const items = await geocode(keyword);
+      list.innerHTML = '';
+      items.slice(0, 5).forEach((it) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = it.display_name;
+        b.onclick = () => navigate('result', { lat: it.lat, lon: it.lon, mode: 'founder', radius: 500 });
+        list.appendChild(b);
+      });
+    }, 250);
+  });
+
   document.getElementById('use-location').onclick = () => {
     if (!navigator.geolocation) return alert('브라우저 위치 기능 미지원');
     navigator.geolocation.getCurrentPosition(
@@ -276,8 +303,12 @@ async function renderResult() {
     shares[id] = data;
     localStorage.setItem('shares', JSON.stringify(shares));
     const link = `${location.origin}${location.pathname}?page=share&id=${id}`;
-    navigator.clipboard.writeText(link);
-    alert('공유 링크가 복사되었습니다.');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(link);
+      alert('공유 링크가 복사되었습니다.');
+    } else {
+      prompt('클립보드가 제한되어 링크를 직접 복사하세요.', link);
+    }
   };
 
   setupMap(data);
